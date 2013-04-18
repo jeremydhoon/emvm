@@ -1,0 +1,72 @@
+# SCons file for emvm
+
+import os
+import re
+import subprocess
+
+LLVM_CONFIG = "/usr/local/bin/llvm-config"
+CLANG = "/usr/bin/clang"
+GCC47 = "/usr/local/bin/g++-4.7"
+
+config = None
+
+class LLVMConfig(object):
+    LLVM_OPTIONS = ("includedir", "libdir", "libfiles", "cxxflags")
+    def __init__(self, include_path, lib_dir, libfiles, cxxflags):
+        self.include_path = include_path
+        self.lib_dir = lib_dir
+        self.libs = libfiles
+        self.cxxflags = cxxflags + " -std=c++0x -fexceptions -g -O0"
+
+    def scons_kwargs(self):
+        return {
+            "LIBPATH": self.lib_dir,
+            "LIBS": map(File, self.libs.split()),
+            "CPPPATH": (
+                self.include_path,
+                os.path.abspath('.')),
+            "CCFLAGS": self.cxxflags,
+            "CXX": GCC47,
+        }
+
+    @classmethod
+    def llvm_options(cls, opts):
+        name_to_ix = dict((opt, ix) for ix, opt in enumerate(opts))
+        flags = tuple(["--%s" % opt for opt in sorted(opts)])
+        stdout = subprocess.check_output((LLVM_CONFIG,) + flags)
+        options = [None for _ in opts]
+        for line, name in zip(stdout.strip().split("\n"), sorted(opts)):
+            options[name_to_ix[name]] = line
+        assert None not in options
+        return options
+
+    @classmethod
+    def load(cls):
+        if not os.path.isfile(LLVM_CONFIG):
+            raise ValueError("%s not found" % LLVM_CONFIG)
+        return cls(*cls.llvm_options(cls.LLVM_OPTIONS))
+
+def UnitTest(source):
+    if not isinstance(source, basestring):
+        raise TypeError("UnitTest expects a source name")
+    target = re.sub(
+        r'([a-z]+)([A-Z]+)',
+        lambda match: match.group(1) + '_' + match.group(2),
+        os.path.splitext(source)[0]).lower()
+    return Program(
+        source=[Object(source, **config.scons_kwargs())] + emvm_lib,
+        target=target,
+        **config.scons_kwargs())
+
+# Configure
+config = LLVMConfig.load()
+
+# Make
+
+emvm_lib = Library(
+    source=["EmvmBuilder.cc", "EmvmExecutor.cc"],
+    target="Emvm",
+    **config.scons_kwargs())
+
+test_sources = ["test/EmvmBuilderTest.cc"]
+unit_tests = map(UnitTest, test_sources)
