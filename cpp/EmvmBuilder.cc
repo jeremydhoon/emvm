@@ -13,7 +13,7 @@
 #include "llvm/Constants.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/PassManager.h"
-#include "llvm/Support/IRBuilder.h"
+#include "llvm/IRBuilder.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/LLVMContext.h"
 #include "llvm/Module.h"
