@@ -50,7 +50,7 @@ class EmvmBuilder {
 
   std::unique_ptr<llvm::LLVMContext> context_;
   std::unique_ptr<llvm::Module> module_;
-  std::unique_ptr<llvm::IRBuilder<>> builder_;
+  std::unique_ptr<llvm::IRBuilder<> > builder_;
   llvm::IntegerType* int64Type_;
   llvm::Function* func_;
   llvm::BasicBlock* block_;

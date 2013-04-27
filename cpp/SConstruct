@@ -7,8 +7,14 @@ import subprocess
 LLVM_CONFIG = "/usr/local/bin/llvm-config"
 CLANG = "/usr/bin/clang"
 GCC47 = "/usr/local/bin/g++-4.7"
+SWIG = "/usr/local/Cellar/swig/2.0.9/bin/swig"
+
+PYTHON_INCLUDES = (
+    "/opt/local/Library/Frameworks/Python.framework/Versions/2.7/include/"
+    "python2.7/")
 
 config = None
+env = None
 
 class LLVMConfig(object):
     LLVM_OPTIONS = ("includedir", "libdir", "libfiles", "cxxflags")
@@ -24,7 +30,8 @@ class LLVMConfig(object):
             "LIBS": map(File, self.libs.split()),
             "CPPPATH": (
                 self.include_path,
-                os.path.abspath('.')),
+                os.path.abspath('.'),
+                PYTHON_INCLUDES),
             "CCFLAGS": self.cxxflags,
             "CXX": GCC47,
         }
@@ -53,20 +60,60 @@ def UnitTest(source):
         r'([a-z]+)([A-Z]+)',
         lambda match: match.group(1) + '_' + match.group(2),
         os.path.splitext(source)[0]).lower()
-    return Program(
+    return env.Program(
         source=[Object(source, **config.scons_kwargs())] + emvm_lib,
         target=target,
         **config.scons_kwargs())
 
+def compile_swig_extension(target, source, env):
+    assert len(target) == 2, "Improperly emitted SWIG targets?"
+    py_module_file, wrapper_file = map(str, target)
+    py_module = os.path.splitext(os.path.basename(py_module_file))[0]
+    subprocess.check_call(
+        (SWIG,
+         "-c++",
+         "-python",
+         "-o", wrapper_file,
+         "-module", py_module,
+         str(source[0])))
+
+def update_swig_targets(target, source, env):
+    if len(source) != 1:
+        raise ValueError("Expected exactly one SWIG interface file")
+    if len(target) != 1:
+        raise ValueError("Expected exactly one SWIG target")
+    filename = str(target[0])
+    return [filename + ".py", filename + ".gen.cc"], source
+
+swig_py_extension = Builder(
+    action=compile_swig_extension,
+    src_suffix=".i",
+    emitter=update_swig_targets)
+
 # Configure
 config = LLVMConfig.load()
+env = Environment(BUILDERS={"SwigPyExtension": swig_py_extension})
 
 # Make
 
-emvm_lib = Library(
+emvm_lib = env.Library(
     source=["EmvmBuilder.cc", "EmvmExecutor.cc"],
     target="Emvm",
     **config.scons_kwargs())
 
 test_sources = ["test/EmvmBuilderTest.cc"]
 unit_tests = map(UnitTest, test_sources)
+
+pyemvm = env.SwigPyExtension(target="pyemvm", source=["emvm.i"])
+
+wrapper_so_kwargs = config.scons_kwargs()
+wrapper_so_kwargs["LIBS"].append(emvm_lib)
+wrapper_so_kwargs["LIBS"].append("python2.7")
+wrapper_so_kwargs["CCFLAGS"] += " -frtti"
+wrapper_so = env.SharedLibrary(
+    source=[src for src in pyemvm if str(src).endswith(".cc")],
+    target="_pyemvm",
+    SHLIBPREFIX="",
+    SHLIBSUFFIX=".so",
+    **wrapper_so_kwargs)
+
