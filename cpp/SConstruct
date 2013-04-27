@@ -12,6 +12,7 @@ SWIG = "/usr/local/Cellar/swig/2.0.9/bin/swig"
 PYTHON_INCLUDES = (
     "/opt/local/Library/Frameworks/Python.framework/Versions/2.7/include/"
     "python2.7/")
+DIR = os.path.abspath('.')
 
 config = None
 env = None
@@ -28,10 +29,7 @@ class LLVMConfig(object):
         return {
             "LIBPATH": self.lib_dir,
             "LIBS": map(File, self.libs.split()),
-            "CPPPATH": (
-                self.include_path,
-                os.path.abspath('.'),
-                PYTHON_INCLUDES),
+            "CPPPATH": (self.include_path, DIR, PYTHON_INCLUDES),
             "CCFLAGS": self.cxxflags,
             "CXX": GCC47,
         }
@@ -117,3 +115,5 @@ wrapper_so = env.SharedLibrary(
     SHLIBSUFFIX=".so",
     **wrapper_so_kwargs)
 
+install_dir = os.path.join(os.path.dirname(DIR), "py")
+wrapper_py = os.path.join(DIR, "pyemvm.py")

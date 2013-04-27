@@ -14,6 +14,16 @@ using GenericArgPtr = std::unique_ptr<std::vector<llvm::GenericValue>>;
 %include "stdint.i"
 
 %template(typevector) std::vector<llvm::Type*>;
+%typemap(in) size_t {
+  if (!PyInt_Check($input)) {
+    PyErr_SetString(PyExc_TypeError, "Expected integer");
+    return nullptr;
+  }
+  $1 = PyInt_AsLong($input);
+  if (-1 == $1 && PyErr_Occurred()) {
+    return nullptr;
+  }
+}
 
 %define LLVMGENERIC(typename,llvm_typename)
 %typemap(out) typename {

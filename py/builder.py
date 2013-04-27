@@ -6,6 +6,11 @@ builder -- tools for constructing emvm syntax trees.
 
 import operator
 
+import os
+import sys
+
+import pyemvm
+
 def _abstract(obj):
     raise NotImplementedError("Called abstract method on %s", obj.__class__)
 
@@ -38,6 +43,9 @@ class VMType(object):
         _abstract(self)
 
     def name(self):
+        _abstract(self)
+
+    def build(self, builder):
         _abstract(self)
 
 class VoidType(VMType):
@@ -74,6 +82,13 @@ class BasicType(VMType):
             self,
             other,
             self.pythonType() == other.pythonType())
+
+    def build(self, builder):
+        if self.basic_type == int:
+            return builder.getInt64Type()
+        raise NotImplementedError(
+            "Do not know how to build type ",
+            self.name())
 
 class FunctionType(VMType):
     def __init__(self, result_type, argument_types):
@@ -117,6 +132,9 @@ class Symbol(object):
     def typeof(self):
         _abstract(self)
 
+    def build(self, builder):
+        _abstract(self)
+
     def __add__(self, other):
         return BinaryOperator(self, other, operator.add)
     def __sub__(self, other):
@@ -149,9 +167,15 @@ class IntegerLiteral(Literal):
     def typeof(self):
         return BasicType(int)
 
+    def build(self, builder):
+        return builder.integerLiteral(self.run())
+
 class BooleanLiteral(Literal):
     def __init__(self, val):
         Literal.__init__(self, bool(val))
+
+    def build(self, builder):
+        return builder.integerLiteral(int(self.run()))
 
 class StringLiteral(Literal):
     def __init__(self, val):
@@ -177,6 +201,12 @@ class BinaryOperator(CompoundSymbol):
     def run(self):
         return self.op(self.left.run(), self.right.run())
 
+    def build(self, builder):
+        return builder.binaryOp(
+            self.left.build(builder),
+            self.right.build(builder),
+            self.op.__name__)
+
 class If(CompoundSymbol):
     def __init__(self, cond, success, failure):
         self.cond = _symbol(cond)
@@ -192,13 +222,20 @@ class If(CompoundSymbol):
             return self.success.run()
         return self.failure.run()
 
+    def build(self, builder):
+        return builder.select(
+            self.cond.build(builder),
+            self.success.build(builder),
+            self.failure.build(builder))
+
 class Argument(Symbol):
-    def __init__(self, typeof):
+    def __init__(self, typeof, index):
         self.bound = False
         self.value = None
         # for convenience, allow conversion from Python basic types
         # to BasicTypes
         self.t = BasicType(typeof) if isinstance(typeof, type) else typeof
+        self.index = index
 
     def typeof(self):
         return self.t
@@ -215,6 +252,9 @@ class Argument(Symbol):
     def run(self):
         assert self.bound
         return self.value
+
+    def build(self, builder):
+        return builder.getArg(self.index)
 
 class Function(Symbol):
     def __init__(self, arguments, body):
@@ -245,12 +285,13 @@ class Function(Symbol):
         pass
 
 class LazyFunction(Function):
-    def __init__(self, arguments, fn, result_type):
+    def __init__(self, arguments, fn, result_type, name):
         self.body = None
         self.evaluating = False
         self.arguments = self._validateargs(arguments)
         self.fn = fn
         self.result_type = _vmtype(result_type)
+        self.name = name
 
     def typeof(self):
         return FunctionType(
@@ -265,6 +306,14 @@ class LazyFunction(Function):
             self.body = self.fn(*self.arguments)
             self.evaluating = False
         return self.body
+
+    def build(self, builder):
+        argtypes = [arg.typeof().build(builder) for arg in self.arguments]
+        builder.enterFunction(
+            self.name,
+            self.result_type.build(builder),
+            argtypes)
+        builder.exitFunction(self._getbody().build(builder))
 
 class Call(CompoundSymbol):
     def __init__(self, fn, argument_values):
@@ -282,12 +331,16 @@ class Call(CompoundSymbol):
 def emvm_run(symbol):
     return _symbol(symbol).run()
 
+def emvm_build(symbol):
+    builder = pyemvm.EmvmBuilder()
+    _symbol(symbol).build(builder)
+    return builder
+
 def function(*arguments):
     """ Decorator a function to denote the AST subtree it returns as an emvm
     function."""
-    vm_arguments = map(Argument, arguments)
+    vm_arguments = [Argument(typ, ix) for ix,typ in enumerate(arguments)]
     def decorator(fn):
-        return LazyFunction(vm_arguments, fn, BasicType(int))
+        return LazyFunction(vm_arguments, fn, BasicType(int), fn.func_name)
     return decorator
-
 

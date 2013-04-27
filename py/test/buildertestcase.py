@@ -44,5 +44,12 @@ class BuilderTestCase(unittest.TestCase):
                 br.Call(factorial, [br.IntegerLiteral(4)])),
             "Incorrect factorial call")
 
+    def testBuild(self):
+        builder = br.emvm_build(sum)
+        self.assertEquals(
+            42,
+            builder.compile().run("sum", [10, 32]),
+            "Incorrect compiled sum result")
+
 if __name__ == "__main__":
     unittest.main()
