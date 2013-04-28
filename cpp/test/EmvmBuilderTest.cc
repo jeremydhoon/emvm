@@ -1,12 +1,14 @@
 // EMVM
 
 #include "EmvmBuilder.h"
+#include "ValuePromise.h"
 
 #include <iostream>
 #include <string>
 #include <vector>
 
 using emvm::EmvmBuilder;
+using emvm::ValuePromise;
 
 void testBuilder() {
   EmvmBuilder builder("test-builder");
@@ -53,7 +55,7 @@ void testBuilder() {
         n,
 	builder.call(
           factorial,
-          std::vector<EmvmBuilder::ValuePromise>({
+          std::vector<ValuePromise>({
 	    builder.binaryOp(n, builder.integerLiteral(1), "sub")})),
 	"mul"),
       builder.integerLiteral(1));
