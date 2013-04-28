@@ -6,6 +6,7 @@
 
 #include "llvm/ExecutionEngine/GenericValue.h"
 #include "llvm/ExecutionEngine/JIT.h"
+#include "llvm/ExecutionEngine/Interpreter.h"
 #include "llvm/Module.h"
 #include "llvm/Support/TargetSelect.h"
 
@@ -13,7 +14,8 @@ namespace emvm {
 
 EmvmExecutor::EmvmExecutor(llvm::Module* module)
   : module_(module)
-  , jit_(llvm::ExecutionEngine::createJIT(module_, &error_)) {
+    //, jit_(llvm::ExecutionEngine::createJIT(module_, &error_)) {
+  , jit_(llvm::ExecutionEngine::create(module_, true, &error_)) {
   if (nullptr == jit_) {
     throw std::runtime_error("Failed to create JIT: " + error_);
   }

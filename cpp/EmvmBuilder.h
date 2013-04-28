@@ -3,6 +3,7 @@
 #pragma once
 
 #include <memory>
+#include <stack>
 #include <string>
 #include <vector>
 
@@ -25,10 +26,11 @@ class EmvmBuilder {
   EmvmExecutor compile();
   void print();
 
-  void enterFunction(const std::string& name, llvm::Type* resultType);
-  void enterFunction(const std::string& name,
-                     llvm::Type* resultType,
-                     const std::vector<llvm::Type*>& args);
+  llvm::Function* enterFunction(const std::string& name,
+				llvm::Type* resultType);
+  llvm::Function* enterFunction(const std::string& name,
+				llvm::Type* resultType,
+				const std::vector<llvm::Type*>& args);
   void exitFunction(llvm::Value* ret);
 
   llvm::Argument* getArg(size_t index);
@@ -40,6 +42,9 @@ class EmvmBuilder {
   llvm::Value* select(llvm::Value* condition,
                       llvm::Value* success,
                       llvm::Value* failure);
+  llvm::CallInst* call(llvm::Value* function);
+  llvm::CallInst* call(llvm::Value* function,
+		       const std::vector<llvm::Value*>& args);
 
   llvm::IntegerType* getInt64Type();
 

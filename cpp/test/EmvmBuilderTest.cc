@@ -41,6 +41,24 @@ void testBuilder() {
     auto min = builder.select(condition, left, right);
     builder.exitFunction(min);
   }
+  {
+    auto factorial = builder.enterFunction(
+      "factorial",
+      builder.getInt64Type(),
+      std::vector<llvm::Type*>({ builder.getInt64Type() }));
+    auto n = builder.getArg(0);
+    auto recurse = builder.select(
+      builder.binaryOp(n, builder.integerLiteral(1), "gt"),
+      builder.binaryOp(
+        n,
+	builder.call(
+          factorial,
+          std::vector<llvm::Value*>({
+	    builder.binaryOp(n, builder.integerLiteral(1), "sub")})),
+	"mul"),
+      builder.integerLiteral(1));
+    builder.exitFunction(recurse);
+  }
 
   builder.print();
 
@@ -51,6 +69,9 @@ void testBuilder() {
   twenty.IntVal = llvm::APInt(64, 20, /* is signed = */ true);
   auto result = exec.run("addFunc", {ten, twenty});
   std::cout << result.IntVal.toString(10, true) << std::endl;
+
+  auto factorialResult = exec.run("factorial", {ten});
+  std::cout << factorialResult.IntVal.toString(10, true) << std::endl;
 }
 
 int main(int argc, char* argv[]) {

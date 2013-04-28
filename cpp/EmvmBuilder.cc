@@ -45,14 +45,14 @@ void EmvmBuilder::print() {
   pm.run(*module_);
 }
 
-void EmvmBuilder::enterFunction(
+llvm::Function* EmvmBuilder::enterFunction(
     const std::string& name,
     llvm::Type* resultType) {
   std::vector<llvm::Type*> args;  // empty
-  enterFunction(name, resultType, args);
+  return enterFunction(name, resultType, args);
 }
 
-void EmvmBuilder::enterFunction(
+llvm::Function* EmvmBuilder::enterFunction(
     const std::string& name,
     llvm::Type* resultType,
     const std::vector<llvm::Type*>& args) {
@@ -71,6 +71,7 @@ void EmvmBuilder::enterFunction(
   for (auto& arg : func_->getArgumentList()) {
     arguments_.push_back(&arg);
   }
+  return func_;
 }
 
 void EmvmBuilder::exitFunction(llvm::Value* ret) {
@@ -101,6 +102,7 @@ llvm::Value* EmvmBuilder::binaryOp(
   llvm::Value* out =
     op == "add" ? builder_->CreateAdd(left, right) :
     op == "sub" ? builder_->CreateSub(left, right) :
+    op == "mul" ? builder_->CreateMul(left, right) :
     op == "lt"  ? builder_->CreateICmp(Predicate::ICMP_SLT, left, right) :
     op == "gt"  ? builder_->CreateICmp(Predicate::ICMP_SGT, left, right) :
     nullptr;
@@ -115,7 +117,35 @@ llvm::Value* EmvmBuilder::select(
     llvm::Value* success,
     llvm::Value* failure) {
   checkInFunction();
-  return builder_->CreateSelect(condition, success, failure);
+
+  auto successBlk = llvm::BasicBlock::Create(*context_, "success", func_);
+  auto failureBlk = llvm::BasicBlock::Create(*context_, "failure", func_);
+  auto finalBlk = llvm::BasicBlock::Create(*context_, "final", func_);
+  
+  builder_->CreateCondBr(condition, successBlk, failureBlk);
+  builder_->SetInsertPoint(successBlk);
+  builder_->CreateBr(finalBlk);
+  builder_->SetInsertPoint(failureBlk);
+  builder_->CreateBr(finalBlk);
+  builder_->SetInsertPoint(finalBlk);
+  auto phi = builder_->CreatePHI(success->getType(), 2);
+  phi->addIncoming(success, successBlk);
+  phi->addIncoming(failure, failureBlk);
+  return phi;
+}
+
+llvm::CallInst* EmvmBuilder::call(llvm::Value* function) {
+  return call(function, std::vector<llvm::Value*>());
+}
+
+llvm::CallInst* EmvmBuilder::call(
+  llvm::Value* function,
+  const std::vector<llvm::Value*>& args) {
+
+  checkInFunction();
+  return builder_->CreateCall(
+    function,
+    llvm::ArrayRef<llvm::Value*>(args));
 }
 
 llvm::IntegerType* EmvmBuilder::getInt64Type() {
@@ -123,13 +153,13 @@ llvm::IntegerType* EmvmBuilder::getInt64Type() {
 }
 
 void EmvmBuilder::checkInFunction() const {
-  if (!block_) {
+  if (nullptr == block_) {
     throwError("Builder is not currently in a function.");
   }
 }
 
 void EmvmBuilder::checkNotInFunction() const {
-  if (block_) {
+  if (nullptr != block_) {
     throwError("Builder is currently in a function.");
   }
 }
