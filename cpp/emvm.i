@@ -13,17 +13,9 @@ using GenericArgPtr = std::unique_ptr<std::vector<llvm::GenericValue>>;
 %include "std_vector.i"
 %include "stdint.i"
 
+%ignore emvm::EmvmBuilder::call(llvm::Function*);
+
 %template(typevector) std::vector<llvm::Type*>;
-%typemap(in) size_t {
-  if (!PyInt_Check($input)) {
-    PyErr_SetString(PyExc_TypeError, "Expected integer");
-    return nullptr;
-  }
-  $1 = PyInt_AsLong($input);
-  if (-1 == $1 && PyErr_Occurred()) {
-    return nullptr;
-  }
-}
 
 %define LLVMGENERIC(typename,llvm_typename)
 %typemap(out) typename {
@@ -44,17 +36,11 @@ using GenericArgPtr = std::unique_ptr<std::vector<llvm::GenericValue>>;
 LLVMGENERIC(typename, SWIGTYPE_p_llvm__Type)
 %enddef
 
-%define LLVMVALUE(typename)
-LLVMGENERIC(typename, SWIGTYPE_p_llvm__Value)
-%enddef
-
 LLVMTYPE(llvm::IntegerType*)
-LLVMVALUE(llvm::ConstantInt*)
-LLVMVALUE(llvm::Argument*)
 
 %typemap(in) const std::vector<llvm::GenericValue>& (GenericArgPtr argholder){
   if (!PyList_Check($input)) {
-    PyErr_SetString(PyExc_TypeError, "Expected a Python string");
+    PyErr_SetString(PyExc_TypeError, "Expected a Python list");
     return nullptr;
   }
 
@@ -98,6 +84,43 @@ LLVMVALUE(llvm::Argument*)
   }
   Py_DECREF(it);
   $1 = argholder.get();
+}
+
+%typemap(in) const std::vector<emvm::EmvmBuilder::ValuePromise>& (
+    std::vector<emvm::EmvmBuilder::ValuePromise> promises) {
+  if (!PyList_Check($input)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a Python list");
+    return nullptr;
+  }
+
+  PyObject* it = PyObject_GetIter($input);
+  if (nullptr == it) {
+    return nullptr;  // propagate error
+  }
+
+  PyObject* val = nullptr;
+  while ((val = PyIter_Next(it))) {
+    emvm::EmvmBuilder::ValuePromise* promisePtr = nullptr;
+    if (nullptr == val) {
+      Py_DECREF(it);
+      return nullptr;
+    }
+    int res = SWIG_ConvertPtr(
+      val,
+      (void**)&promisePtr,
+      SWIGTYPE_p_emvm__EmvmBuilder__ValuePromise,
+      0);
+    if (!SWIG_IsOK(res)) {
+      Py_DECREF(val);
+      Py_DECREF(it);
+      PyErr_SetString(PyExc_TypeError, "Invalid ValuePromise");
+      return nullptr;
+    }
+    assert(promisePtr != nullptr);
+    promises.emplace_back(*promisePtr);
+  }
+  Py_DECREF(it);
+  $1 = &promises;
 }
 
 %typemap(out) llvm::GenericValue {

@@ -292,6 +292,7 @@ class LazyFunction(Function):
         self.fn = fn
         self.result_type = _vmtype(result_type)
         self.name = name
+        self.compiled_function = None
 
     def typeof(self):
         return FunctionType(
@@ -308,12 +309,15 @@ class LazyFunction(Function):
         return self.body
 
     def build(self, builder):
-        argtypes = [arg.typeof().build(builder) for arg in self.arguments]
-        builder.enterFunction(
-            self.name,
-            self.result_type.build(builder),
-            argtypes)
-        builder.exitFunction(self._getbody().build(builder))
+        if self.compiled_function is None:
+            argtypes = [arg.typeof().build(builder) for arg in self.arguments]
+            self.compiled_function = builder.enterFunction(
+                self.name,
+                self.result_type.build(builder),
+                argtypes)
+            builder.exitFunction(self._getbody().build(builder))
+        return self.compiled_function
+            
 
 class Call(CompoundSymbol):
     def __init__(self, fn, argument_values):
@@ -327,6 +331,11 @@ class Call(CompoundSymbol):
 
     def run(self):
         return self.fn.call(self.argument_values)
+
+    def build(self, builder):
+        fn = self.fn.build(builder)
+        args = [arg.build(builder) for arg in self.argument_values]
+        return builder.call(self.fn.build(builder), args)
 
 def emvm_run(symbol):
     return _symbol(symbol).run()

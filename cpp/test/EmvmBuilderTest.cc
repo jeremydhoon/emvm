@@ -53,7 +53,7 @@ void testBuilder() {
         n,
 	builder.call(
           factorial,
-          std::vector<llvm::Value*>({
+          std::vector<EmvmBuilder::ValuePromise>({
 	    builder.binaryOp(n, builder.integerLiteral(1), "sub")})),
 	"mul"),
       builder.integerLiteral(1));
@@ -68,10 +68,11 @@ void testBuilder() {
   ten.IntVal = llvm::APInt(64, 10, /* is signed = */ true);
   twenty.IntVal = llvm::APInt(64, 20, /* is signed = */ true);
   auto result = exec.run("addFunc", {ten, twenty});
-  std::cout << result.IntVal.toString(10, true) << std::endl;
+  std::cout << "Addition: " << result.IntVal.toString(10, true) << std::endl;
 
   auto factorialResult = exec.run("factorial", {ten});
-  std::cout << factorialResult.IntVal.toString(10, true) << std::endl;
+  std::cout << "Factorial: " << factorialResult.IntVal.toString(10, true)
+	    << std::endl;
 }
 
 int main(int argc, char* argv[]) {

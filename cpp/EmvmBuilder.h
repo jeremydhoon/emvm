@@ -20,6 +20,32 @@
 namespace emvm {
 class EmvmBuilder {
  public:
+
+  class ValuePromise {
+   public:
+    ValuePromise()
+      : value_(nullptr)
+      , func_([]() { return nullptr; }) {
+    }
+
+    explicit ValuePromise(std::function<llvm::Value*()> func)
+      : value_(nullptr)
+      , func_(func) {
+    }
+    ValuePromise(const ValuePromise& other) = default;
+    
+    llvm::Value* invoke() const {
+      if (nullptr == value_) {
+	value_ = func_(); 
+      }
+      return value_;
+    }
+
+  private:
+    mutable llvm::Value* value_;
+    std::function<llvm::Value*()> func_;
+  };
+
   EmvmBuilder();
   explicit EmvmBuilder(const std::string& name);
 
@@ -31,20 +57,20 @@ class EmvmBuilder {
   llvm::Function* enterFunction(const std::string& name,
 				llvm::Type* resultType,
 				const std::vector<llvm::Type*>& args);
-  void exitFunction(llvm::Value* ret);
+  void exitFunction(ValuePromise ret);
 
-  llvm::Argument* getArg(size_t index);
+  ValuePromise getArg(size_t index);
 
-  llvm::ConstantInt* integerLiteral(int64_t i);
-  llvm::Value* binaryOp(llvm::Value* left,
-                        llvm::Value* right,
-                        const std::string& op);
-  llvm::Value* select(llvm::Value* condition,
-                      llvm::Value* success,
-                      llvm::Value* failure);
-  llvm::CallInst* call(llvm::Value* function);
-  llvm::CallInst* call(llvm::Value* function,
-		       const std::vector<llvm::Value*>& args);
+  ValuePromise integerLiteral(int64_t i);
+  ValuePromise binaryOp(ValuePromise left,
+			ValuePromise right,
+			const std::string& op);
+  ValuePromise select(ValuePromise condition,
+		      ValuePromise success,
+		      ValuePromise failure);
+  ValuePromise call(llvm::Function* function);
+  ValuePromise call(llvm::Function* function,
+		    const std::vector<ValuePromise>& args);
 
   llvm::IntegerType* getInt64Type();
 

@@ -20,6 +20,8 @@
 
 namespace emvm {
 
+using ValuePromise = EmvmBuilder::ValuePromise;
+
 EmvmBuilder::EmvmBuilder()
   : EmvmBuilder("emvm-default") {
 }
@@ -74,78 +76,99 @@ llvm::Function* EmvmBuilder::enterFunction(
   return func_;
 }
 
-void EmvmBuilder::exitFunction(llvm::Value* ret) {
+void EmvmBuilder::exitFunction(ValuePromise ret) {
   checkInFunction();
-  builder_->CreateRet(ret);
+  builder_->CreateRet(ret.invoke());
   block_ = nullptr;
   func_ = nullptr;
   builder_->ClearInsertionPoint();
 }
 
-llvm::Argument* EmvmBuilder::getArg(size_t index) {
+ValuePromise EmvmBuilder::getArg(size_t index) {
   checkInFunction();
-  return arguments_.at(index);
+  return ValuePromise([this, index]() -> llvm::Value* {
+    return arguments_.at(index);
+  });
 }
 
-llvm::ConstantInt* EmvmBuilder::integerLiteral(int64_t i) {
-  return llvm::ConstantInt::getSigned(int64Type_, i);
+ValuePromise EmvmBuilder::integerLiteral(int64_t i) {
+  return ValuePromise([this, i]() -> llvm::Value* {
+    return llvm::ConstantInt::getSigned(int64Type_, i);
+  });
 }
 
-llvm::Value* EmvmBuilder::binaryOp(
-    llvm::Value* left,
-    llvm::Value* right,
+ValuePromise EmvmBuilder::binaryOp(
+    ValuePromise leftPromise,
+    ValuePromise rightPromise,
     const std::string& op) {
-  checkInFunction();
+  auto constructor = [this, leftPromise, rightPromise, op]() -> llvm::Value* {
+    checkInFunction();
 
-  using Predicate = llvm::CmpInst::Predicate;
+    using Predicate = llvm::CmpInst::Predicate;
 
-  llvm::Value* out =
-    op == "add" ? builder_->CreateAdd(left, right) :
-    op == "sub" ? builder_->CreateSub(left, right) :
-    op == "mul" ? builder_->CreateMul(left, right) :
-    op == "lt"  ? builder_->CreateICmp(Predicate::ICMP_SLT, left, right) :
-    op == "gt"  ? builder_->CreateICmp(Predicate::ICMP_SGT, left, right) :
-    nullptr;
-  if (nullptr == out) {
-    throwError("Invalid binary operation");
-  }
-  return out;
+    auto left = leftPromise.invoke();
+    auto right = rightPromise.invoke();
+    llvm::Value* out =
+      op == "add" ? builder_->CreateAdd(left, right) :
+      op == "sub" ? builder_->CreateSub(left, right) :
+      op == "mul" ? builder_->CreateMul(left, right) :
+      op == "lt"  ? builder_->CreateICmp(Predicate::ICMP_SLT, left, right) :
+      op == "gt"  ? builder_->CreateICmp(Predicate::ICMP_SGT, left, right) :
+      nullptr;
+    if (nullptr == out) {
+      throwError("Invalid binary operation");
+    }
+    return out;
+  };
+  return ValuePromise(constructor);
 }
 
-llvm::Value* EmvmBuilder::select(
-    llvm::Value* condition,
-    llvm::Value* success,
-    llvm::Value* failure) {
-  checkInFunction();
+ValuePromise EmvmBuilder::select(
+    ValuePromise condition,
+    ValuePromise success,
+    ValuePromise failure) {
+  return ValuePromise([this, condition, success, failure]() -> llvm::Value* {
+    checkInFunction();
 
-  auto successBlk = llvm::BasicBlock::Create(*context_, "success", func_);
-  auto failureBlk = llvm::BasicBlock::Create(*context_, "failure", func_);
-  auto finalBlk = llvm::BasicBlock::Create(*context_, "final", func_);
+    auto successBlk = llvm::BasicBlock::Create(*context_, "success", func_);
+    auto failureBlk = llvm::BasicBlock::Create(*context_, "failure", func_);
+    auto finalBlk = llvm::BasicBlock::Create(*context_, "final", func_);
   
-  builder_->CreateCondBr(condition, successBlk, failureBlk);
-  builder_->SetInsertPoint(successBlk);
-  builder_->CreateBr(finalBlk);
-  builder_->SetInsertPoint(failureBlk);
-  builder_->CreateBr(finalBlk);
-  builder_->SetInsertPoint(finalBlk);
-  auto phi = builder_->CreatePHI(success->getType(), 2);
-  phi->addIncoming(success, successBlk);
-  phi->addIncoming(failure, failureBlk);
-  return phi;
+    builder_->CreateCondBr(condition.invoke(), successBlk, failureBlk);
+    builder_->SetInsertPoint(successBlk);
+    auto successRealized = success.invoke();
+    builder_->CreateBr(finalBlk);
+    builder_->SetInsertPoint(failureBlk);
+    auto failureRealized = failure.invoke();
+    builder_->CreateBr(finalBlk);
+    builder_->SetInsertPoint(finalBlk);
+    auto phi = builder_->CreatePHI(successRealized->getType(), 2);
+    phi->addIncoming(successRealized, successBlk);
+    phi->addIncoming(failureRealized, failureBlk);
+    return phi;
+  });
 }
 
-llvm::CallInst* EmvmBuilder::call(llvm::Value* function) {
-  return call(function, std::vector<llvm::Value*>());
+ValuePromise EmvmBuilder::call(llvm::Function* function) {
+  return call(function, std::vector<ValuePromise>());
 }
 
-llvm::CallInst* EmvmBuilder::call(
-  llvm::Value* function,
-  const std::vector<llvm::Value*>& args) {
+ValuePromise EmvmBuilder::call(
+  llvm::Function* function,
+  const std::vector<ValuePromise>& args) {
+  return ValuePromise([this, function, args]() -> llvm::Value* {
+    checkInFunction();
 
-  checkInFunction();
-  return builder_->CreateCall(
-    function,
-    llvm::ArrayRef<llvm::Value*>(args));
+    std::vector<llvm::Value*> realizedArgs;
+    for (auto& promise : args) {
+      realizedArgs.emplace_back(promise.invoke());
+    }
+
+    checkInFunction();
+    return builder_->CreateCall(
+      function,
+      llvm::ArrayRef<llvm::Value*>(realizedArgs));
+  });
 }
 
 llvm::IntegerType* EmvmBuilder::getInt64Type() {
