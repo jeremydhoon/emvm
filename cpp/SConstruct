@@ -95,7 +95,7 @@ env = Environment(BUILDERS={"SwigPyExtension": swig_py_extension})
 # Make
 
 emvm_lib = env.Library(
-    source=["EmvmBuilder.cc", "EmvmExecutor.cc"],
+    source=["EmvmBuilder.cc", "EmvmExecutor.cc", "ValuePromise.cc"],
     target="Emvm",
     **config.scons_kwargs())
 

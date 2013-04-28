@@ -16,36 +16,11 @@
 #include "llvm/Module.h"
 
 #include "EmvmExecutor.h"
+#include "ValuePromise.h"
 
 namespace emvm {
 class EmvmBuilder {
  public:
-
-  class ValuePromise {
-   public:
-    ValuePromise()
-      : value_(nullptr)
-      , func_([]() { return nullptr; }) {
-    }
-
-    explicit ValuePromise(std::function<llvm::Value*()> func)
-      : value_(nullptr)
-      , func_(func) {
-    }
-    ValuePromise(const ValuePromise& other) = default;
-    
-    llvm::Value* invoke() const {
-      if (nullptr == value_) {
-	value_ = func_(); 
-      }
-      return value_;
-    }
-
-  private:
-    mutable llvm::Value* value_;
-    std::function<llvm::Value*()> func_;
-  };
-
   EmvmBuilder();
   explicit EmvmBuilder(const std::string& name);
 

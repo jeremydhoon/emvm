@@ -20,8 +20,6 @@
 
 namespace emvm {
 
-using ValuePromise = EmvmBuilder::ValuePromise;
-
 EmvmBuilder::EmvmBuilder()
   : EmvmBuilder("emvm-default") {
 }

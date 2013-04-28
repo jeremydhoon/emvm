@@ -5,6 +5,7 @@
 #include <vector>
 #include "EmvmBuilder.h"
 #include "EmvmExecutor.h"
+#include "ValuePromise.h"
 
 using GenericArgPtr = std::unique_ptr<std::vector<llvm::GenericValue>>;
 %}
@@ -86,8 +87,8 @@ LLVMTYPE(llvm::IntegerType*)
   $1 = argholder.get();
 }
 
-%typemap(in) const std::vector<emvm::EmvmBuilder::ValuePromise>& (
-    std::vector<emvm::EmvmBuilder::ValuePromise> promises) {
+%typemap(in) const std::vector<emvm::ValuePromise>& (
+    std::vector<emvm::ValuePromise> promises) {
   if (!PyList_Check($input)) {
     PyErr_SetString(PyExc_TypeError, "Expected a Python list");
     return nullptr;
@@ -100,7 +101,7 @@ LLVMTYPE(llvm::IntegerType*)
 
   PyObject* val = nullptr;
   while ((val = PyIter_Next(it))) {
-    emvm::EmvmBuilder::ValuePromise* promisePtr = nullptr;
+    emvm::ValuePromise* promisePtr = nullptr;
     if (nullptr == val) {
       Py_DECREF(it);
       return nullptr;
@@ -108,7 +109,7 @@ LLVMTYPE(llvm::IntegerType*)
     int res = SWIG_ConvertPtr(
       val,
       (void**)&promisePtr,
-      SWIGTYPE_p_emvm__EmvmBuilder__ValuePromise,
+      SWIGTYPE_p_emvm__ValuePromise,
       0);
     if (!SWIG_IsOK(res)) {
       Py_DECREF(val);
@@ -140,6 +141,6 @@ LLVMTYPE(llvm::IntegerType*)
   emvm::EmvmExecutor::initTargets();
 }
 
+%include "ValuePromise.h"
 %include "EmvmExecutor.h"
 %include "EmvmBuilder.h"
-
