@@ -12,9 +12,10 @@ using emvm::ValuePromise;
 
 void testBuilder() {
   EmvmBuilder builder("test-builder");
+  auto i64 = builder.getInt64Type();
 
   {
-    builder.enterFunction("testReturn", builder.getInt64Type());
+    builder.enterFunction("testReturn", i64);
     auto op = builder.binaryOp(
       builder.integerLiteral(10),
       builder.integerLiteral(20),
@@ -24,8 +25,8 @@ void testBuilder() {
   {
     builder.enterFunction(
       "addFunc",
-      builder.getInt64Type(),
-      std::vector<llvm::Type*>(2, builder.getInt64Type()));
+      i64,
+      std::vector<llvm::Type*>(2, i64));
     auto op = builder.binaryOp(
       builder.getArg(0),
       builder.getArg(1),
@@ -35,8 +36,8 @@ void testBuilder() {
   {
     builder.enterFunction(
       "min",
-      builder.getInt64Type(),
-      std::vector<llvm::Type*>(2, builder.getInt64Type()));
+      i64,
+      std::vector<llvm::Type*>(2, i64));
     auto left = builder.getArg(0);
     auto right = builder.getArg(1);
     auto condition = builder.binaryOp(left, right, "lt");
@@ -46,8 +47,8 @@ void testBuilder() {
   {
     auto factorial = builder.enterFunction(
       "factorial",
-      builder.getInt64Type(),
-      std::vector<llvm::Type*>({ builder.getInt64Type() }));
+      i64,
+      std::vector<llvm::Type*>({ i64 }));
     auto n = builder.getArg(0);
     auto recurse = builder.select(
       builder.binaryOp(n, builder.integerLiteral(1), "gt"),
@@ -62,6 +63,15 @@ void testBuilder() {
     builder.exitFunction(recurse);
   }
 
+  auto isOdd = builder.enterFunction("isOdd", i64, { i64 });
+  builder.exitFunction(
+    builder.binaryOp(builder.getArg(0), builder.integerLiteral(2), "mod"));
+  std::vector<int64_t> numbers({1, 3, 5, 10, 12, 15});
+  auto countOdd = builder.countPredicateMatches(
+    isOdd,
+    &numbers.front(),
+    numbers.size());
+
   builder.print();
 
   emvm::EmvmExecutor::initTargets();
@@ -74,6 +84,10 @@ void testBuilder() {
 
   auto factorialResult = exec.run("factorial", {ten});
   std::cout << "Factorial: " << factorialResult.IntVal.toString(10, true)
+	    << std::endl;
+
+  auto countResult = exec.run(countOdd);
+  std::cout << "Odd count: " << countResult.IntVal.toString(10, true)
 	    << std::endl;
 }
 

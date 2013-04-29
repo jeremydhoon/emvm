@@ -49,10 +49,21 @@ class EmvmBuilder {
 
   llvm::IntegerType* getInt64Type();
 
+  // Function applications
+  llvm::Function* countPredicateMatches(llvm::Function* predicate,
+					int64_t* toScan,
+					size_t toScanSize);
+
  private:
+  llvm::ConstantInt* getInt(int64_t i);
   void checkInFunction() const;
   void checkNotInFunction() const;
   void throwError(const std::string& error) const;
+
+  // Handy debugging functions for adding print statements to generated
+  // LLVM IR code.
+  llvm::Function* getPrintf();
+  void printIntValue(llvm::Value* value);
 
   std::unique_ptr<llvm::LLVMContext> context_;
   std::unique_ptr<llvm::Module> module_;
@@ -61,5 +72,6 @@ class EmvmBuilder {
   llvm::Function* func_;
   llvm::BasicBlock* block_;
   std::vector<llvm::Argument*> arguments_;
+  llvm::GlobalVariable* intFmtStr_;
 };
 }  // namespace emvm
