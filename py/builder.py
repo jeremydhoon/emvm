@@ -125,6 +125,19 @@ def _symbol(obj, expected=None):
             (obj, expected))
     return obj
 
+def _cast(value):
+    if isinstance(value, Symbol):
+        return value
+    if isinstance(value, int):
+        return IntegerLiteral(value)
+    raise TypeError(
+        "Cannot convert value of type %s to Symbol" % type(value))
+
+def land(a, b):
+    return a and b
+def lor(a, b):
+    return a or b
+
 class Symbol(object):
     def run(self):
         _abstract(self)
@@ -135,19 +148,33 @@ class Symbol(object):
     def build(self, builder):
         _abstract(self)
 
+    def _op(self, other, op):
+        return BinaryOperator(self, _cast(other), op)
+
     def __add__(self, other):
-        return BinaryOperator(self, other, operator.add)
+        return self._op(other, operator.add)
     def __sub__(self, other):
-        return BinaryOperator(self, other, operator.sub)
+        return self._op(other, operator.sub)
+    def __mod__(self, other):
+        return self._op(other, operator.mod)
+    def __mul__(self, other):
+        return self._op(other, operator.mul)
+    def __div__(self, other):
+        return self._op(other, operator.div)
+
+    def __and__(self, other):
+        return self._op(other, land)
+    def __or__(self, other):
+        return self._op(other, lor)
 
     def __eq__(self, other):
-        return BinaryOperator(self, other, operator.eq)
+        return self._op(other, operator.eq)
+    def __ne__(self, other):
+        return self._op(other, operator.ne)
     def __lt__(self, other):
-        return BinaryOperator(self, other, operator.lt)
+        return self._op(other, operator.lt)
     def __gt__(self, other):
-        return BinaryOperator(self, other, operator.gt)
-    def __mul__(self, other):
-        return BinaryOperator(self, other, operator.mul)
+        return self._op(other, operator.gt)
 
 class Literal(Symbol):
     def __init__(self, val):
@@ -209,9 +236,9 @@ class BinaryOperator(CompoundSymbol):
 
 class If(CompoundSymbol):
     def __init__(self, cond, success, failure):
-        self.cond = _symbol(cond)
-        self.success = success
-        self.failure = failure
+        self.cond = _cast(cond)
+        self.success = _cast(success)
+        self.failure = _cast(failure)
         self.t = self.success.typeof().unify(self.failure.typeof())
 
     def typeof(self):
@@ -250,7 +277,7 @@ class Argument(Symbol):
         self.bound = False
 
     def run(self):
-        assert self.bound
+        assert self.bound, self.typeof()
         return self.value
 
     def build(self, builder):
@@ -276,6 +303,9 @@ class Function(Symbol):
         self._bind(arg_values)
         return self._getbody().run()
 
+    def __call__(self, *args):
+        return Call(self, args)
+
     def typeof(self):
         return FunctionType(
             self._getbody().typeof(),
@@ -293,6 +323,7 @@ class LazyFunction(Function):
         self.result_type = _vmtype(result_type)
         self.name = name
         self.compiled_function = None
+        self.builder = None
 
     def typeof(self):
         return FunctionType(
@@ -309,7 +340,11 @@ class LazyFunction(Function):
         return self.body
 
     def build(self, builder):
-        if self.compiled_function is None:
+        # force re-compilation in case we have a new builder, since
+        # our previous function pointer is now meaningless
+        if (self.compiled_function is None
+            or self.builder and self.builder is not builder):
+            self.builder = builder
             argtypes = [arg.typeof().build(builder) for arg in self.arguments]
             self.compiled_function = builder.enterFunction(
                 self.name,
@@ -322,7 +357,7 @@ class LazyFunction(Function):
 class Call(CompoundSymbol):
     def __init__(self, fn, argument_values):
         self.fn = _symbol(fn, Function)
-        self.argument_values = map(_symbol, argument_values)
+        self.argument_values = map(_cast, argument_values)
         for arg_value, arg in zip(self.argument_values, self.fn.arguments):
             arg_value.typeof().unify(arg.typeof())
 
@@ -345,11 +380,24 @@ def emvm_build(symbol):
     _symbol(symbol).build(builder)
     return builder
 
+def emvm_count_predicate(symbol, array, additional_functions=None):
+    builder = pyemvm.EmvmBuilder()
+    for func in additional_functions or ():
+        _symbol(func).build(builder)
+    _symbol(symbol)
+    _vmtype(symbol.typeof(), FunctionType)
+    _vmtype(symbol.result_type, BasicType)
+    predicate = symbol.build(builder)
+    fn = builder.countPredicateMatches((predicate, array))
+    ex = builder.compile()
+    return ex.runFunction(fn, [])
+
 def function(*arguments):
     """ Decorator a function to denote the AST subtree it returns as an emvm
     function."""
     vm_arguments = [Argument(typ, ix) for ix,typ in enumerate(arguments)]
     def decorator(fn):
+        # TODO: type inference, instead of forcing all functions to return int.
         return LazyFunction(vm_arguments, fn, BasicType(int), fn.func_name)
     return decorator
 

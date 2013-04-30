@@ -12,6 +12,9 @@ SWIG = "/usr/local/Cellar/swig/2.0.9/bin/swig"
 PYTHON_INCLUDES = (
     "/opt/local/Library/Frameworks/Python.framework/Versions/2.7/include/"
     "python2.7/")
+NUMPY_INCLUDES = (
+    "/System/Library/Frameworks/Python.framework/Versions/2.7/Extras/lib/"
+    "python/numpy/core/include/")
 DIR = os.path.abspath('.')
 
 config = None
@@ -29,7 +32,7 @@ class LLVMConfig(object):
         return {
             "LIBPATH": self.lib_dir,
             "LIBS": map(File, self.libs.split()),
-            "CPPPATH": (self.include_path, DIR, PYTHON_INCLUDES),
+            "CPPPATH": [self.include_path, DIR, PYTHON_INCLUDES],
             "CCFLAGS": self.cxxflags,
             "CXX": GCC47,
         }
@@ -107,6 +110,7 @@ pyemvm = env.SwigPyExtension(target="pyemvm", source=["emvm.i"])
 wrapper_so_kwargs = config.scons_kwargs()
 wrapper_so_kwargs["LIBS"].append(emvm_lib)
 wrapper_so_kwargs["LIBS"].append("python2.7")
+wrapper_so_kwargs["CPPPATH"].append(NUMPY_INCLUDES)
 wrapper_so_kwargs["CCFLAGS"] += " -frtti"
 wrapper_so = env.SharedLibrary(
     source=[src for src in pyemvm if str(src).endswith(".cc")],

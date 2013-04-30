@@ -3,6 +3,9 @@
 %{
 #include <string>
 #include <vector>
+
+#include "numpy/arrayobject.h"
+
 #include "EmvmBuilder.h"
 #include "EmvmExecutor.h"
 #include "ValuePromise.h"
@@ -15,6 +18,8 @@ using GenericArgPtr = std::unique_ptr<std::vector<llvm::GenericValue>>;
 %include "stdint.i"
 
 %ignore emvm::EmvmBuilder::call(llvm::Function*);
+%rename("runFunction") emvm::EmvmExecutor::run(llvm::Function* func, const std::vector<llvm::GenericValue>& args);
+%ignore emvm::EmvmExecutor::run(llvm::Function*);
 
 %template(typevector) std::vector<llvm::Type*>;
 
@@ -124,6 +129,54 @@ LLVMTYPE(llvm::IntegerType*)
   $1 = &promises;
 }
 
+// Numpy handling
+%typemap(in) (llvm::Function* predicate, int64_t* toScan, size_t toScanSize) {
+  const char* errStr = "Expected a tuple (function, ndarray)";
+  if (!PyTuple_Check($input)) {
+    PyErr_SetString(PyExc_TypeError, errStr);
+    return nullptr;
+  }
+
+  auto numArgs = PyTuple_GET_SIZE($input);
+  if (numArgs != 2) {
+    PyErr_SetString(PyExc_TypeError, errStr);
+    return nullptr;
+  }
+
+  PyObject* funcPtr = PyTuple_GET_ITEM($input, 0);
+  PyObject* arr = PyTuple_GET_ITEM($input, 1);
+
+  llvm::Function* func = nullptr;
+  auto result = SWIG_ConvertPtr(
+    funcPtr,
+    reinterpret_cast<void**>(&func),
+    SWIGTYPE_p_llvm__Function,
+    0);
+  if (!SWIG_IsOK(result)) {
+    PyErr_SetString(PyExc_TypeError, errStr);
+    return nullptr;
+  }
+
+  if (nullptr == arr || !PyArray_Check(arr)) {
+    PyErr_SetString(PyExc_TypeError, errStr);
+    return nullptr;
+  }
+  
+  if (PyArray_NDIM(arr) != 1) {
+    PyErr_SetString(PyExc_TypeError, "Expected a one-dimensional array");
+    return nullptr;
+  }
+  auto descr = PyArray_DESCR(arr);
+  if (nullptr == descr || descr->elsize != sizeof(int64_t)) {
+    PyErr_SetString(PyExc_TypeError, "Array has the wrong type.");
+    return nullptr;
+  }
+
+  $1 = func;
+  $2 = static_cast<int64_t*>(PyArray_DATA(arr));
+  $3 = PyArray_DIMS(arr)[0];
+}
+
 %typemap(out) llvm::GenericValue {
   $result = PyInt_FromLong(*$1.IntVal.getRawData());
 }
@@ -139,6 +192,7 @@ LLVMTYPE(llvm::IntegerType*)
 
 %init {
   emvm::EmvmExecutor::initTargets();
+  import_array();
 }
 
 %include "ValuePromise.h"

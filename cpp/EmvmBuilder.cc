@@ -2,6 +2,7 @@
 
 #include "EmvmBuilder.h"
 
+#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -101,24 +102,31 @@ ValuePromise EmvmBuilder::binaryOp(
     ValuePromise rightPromise,
     const std::string& op) {
   auto constructor = [this, leftPromise, rightPromise, op]() -> llvm::Value* {
-    checkInFunction();
+  checkInFunction();
 
-    using Predicate = llvm::CmpInst::Predicate;
+  using Predicate = llvm::CmpInst::Predicate;
+  using BinaryOps = llvm::Instruction::BinaryOps;
 
-    auto left = leftPromise.invoke();
-    auto right = rightPromise.invoke();
-    llvm::Value* out =
-      op == "add" ? builder_->CreateAdd(left, right) :
-      op == "sub" ? builder_->CreateSub(left, right) :
-      op == "mul" ? builder_->CreateMul(left, right) :
-      op == "mod" ? builder_->CreateSRem(left, right) :
-      op == "lt"  ? builder_->CreateICmpSLT(left, right) :
-      op == "gt"  ? builder_->CreateICmpSGT(left, right) :
-      nullptr;
+  auto left = leftPromise.invoke();
+  auto right = rightPromise.invoke();
+  
+  llvm::Value* out =
+    op == "add"  ? builder_->CreateAdd(left, right) :
+    op == "sub"  ? builder_->CreateSub(left, right) :
+    op == "mul"  ? builder_->CreateMul(left, right) :
+    op == "div"  ? builder_->CreateSDiv(left, right) :
+    op == "mod"  ? builder_->CreateSRem(left, right) :
+    op == "land" ? builder_->CreateBinOp(BinaryOps::And, left, right) :
+    op == "lor"  ? builder_->CreateBinOp(BinaryOps::Or, left, right) :
+    op == "lt"   ? builder_->CreateICmpSLT(left, right) :
+    op == "gt"   ? builder_->CreateICmpSGT(left, right) :
+    op == "eq"   ? builder_->CreateICmpEQ(left, right) :
+    op == "ne"   ? builder_->CreateICmpNE(left, right) :
+    nullptr;
     if (nullptr == out) {
       throwError("Invalid binary operation");
     }
-    return out;
+    return toInt64(out);
   };
   return ValuePromise(constructor);
 }
@@ -134,7 +142,7 @@ ValuePromise EmvmBuilder::select(
     auto failureBlk = llvm::BasicBlock::Create(*context_, "failure", func_);
     auto finalBlk = llvm::BasicBlock::Create(*context_, "final", func_);
   
-    builder_->CreateCondBr(condition.invoke(), successBlk, failureBlk);
+    builder_->CreateCondBr(toBool(condition.invoke()), successBlk, failureBlk);
     builder_->SetInsertPoint(successBlk);
     auto successRealized = success.invoke();
     builder_->CreateBr(finalBlk);
@@ -225,7 +233,10 @@ llvm::Function* EmvmBuilder::countPredicateMatches(llvm::Function* predicate,
     currentInt,
     "predicate_result");
   auto predicateResultIsTrue = builder_->CreateICmpNE(predicateResult, zero);
-  auto increment = builder_->CreateSelect(predicateResultIsTrue, one, zero);
+  auto increment = builder_->CreateSelect(
+    toBool(predicateResultIsTrue),
+    one,
+    zero);
   auto count = builder_->CreateAdd(prevCount, increment, "count");
   prevCount->addIncoming(zero, entryBlk);
   prevCount->addIncoming(count, loopBlk);
@@ -235,7 +246,7 @@ llvm::Function* EmvmBuilder::countPredicateMatches(llvm::Function* predicate,
     incrementLoopIndex,
     getInt(toScanSize),
     "at_end");
-  auto loopBr = builder_->CreateCondBr(atEnd, loopBlk, exitBlk);
+  auto loopBr = builder_->CreateCondBr(toBool(atEnd), loopBlk, exitBlk);
 
   // Finish up
   builder_->SetInsertPoint(exitBlk);
@@ -250,6 +261,17 @@ llvm::IntegerType* EmvmBuilder::getInt64Type() {
 
 llvm::ConstantInt* EmvmBuilder::getInt(int64_t i) {
   return llvm::ConstantInt::get(getInt64Type(), i);
+}
+
+llvm::Value* EmvmBuilder::toInt64(llvm::Value* otherInt) {
+  return builder_->CreateIntCast(otherInt, getInt64Type(), /* signed = */ true);
+}
+
+llvm::Value* EmvmBuilder::toBool(llvm::Value* otherInt) {
+  return builder_->CreateIntCast(
+    otherInt,
+    llvm::IntegerType::get(*context_, 1),
+    /* signed = */ false);
 }
 
 void EmvmBuilder::checkInFunction() const {

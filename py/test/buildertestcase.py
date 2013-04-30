@@ -2,6 +2,8 @@
 
 import unittest
 
+import numpy as np
+
 import builder as br
 
 @br.function(int, int)
@@ -10,10 +12,11 @@ def sum(a, b):
 
 @br.function(int)
 def factorial(n):
-    return br.If(
-        n > br.IntegerLiteral(1),
-        n * br.Call(factorial, [n - br.IntegerLiteral(1)]),
-        br.IntegerLiteral(1))
+    return br.If(n > 1, n * factorial(n - 1), 1)
+
+@br.function(int)
+def is_odd(n):
+    return n % 2 != 0
 
 class BuilderTestCase(unittest.TestCase):
     def testSymbol(self):
@@ -57,6 +60,13 @@ class BuilderTestCase(unittest.TestCase):
             3628800,
             builder.compile().run("factorial", [10]),
             "Incorrect compiled factorial result")
+
+    def testCountPredicate(self):
+        arr = np.array([0, 1, 3, 5, 10], dtype='int64')
+        self.assertEquals(
+            3,
+            br.emvm_count_predicate(is_odd, arr),
+            "Incorrect odd count")
 
 if __name__ == "__main__":
     unittest.main()

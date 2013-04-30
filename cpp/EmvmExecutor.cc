@@ -12,7 +12,7 @@
 
 namespace emvm {
 
-using ArgVector = EmvmExecutor::ArgVector;
+using ArgVector = std::vector<llvm::GenericValue>;
 
 EmvmExecutor::EmvmExecutor(llvm::Module* module)
   : module_(module)

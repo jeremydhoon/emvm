@@ -13,10 +13,12 @@ class EmvmBuilder;
 
 class EmvmExecutor {
  public:
-  typedef std::vector<llvm::GenericValue> ArgVector;
-
-  llvm::GenericValue run(const std::string& funcName, const ArgVector& args);
-  llvm::GenericValue run(llvm::Function* func, const ArgVector& args);
+  llvm::GenericValue run(
+    const std::string& funcName,
+    const std::vector<llvm::GenericValue>& args);
+  llvm::GenericValue run(
+    llvm::Function* func,
+    const std::vector<llvm::GenericValue>& args);
   llvm::GenericValue run(llvm::Function* func);
 
   static void initTargets();

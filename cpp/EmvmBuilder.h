@@ -56,6 +56,8 @@ class EmvmBuilder {
 
  private:
   llvm::ConstantInt* getInt(int64_t i);
+  llvm::Value* toInt64(llvm::Value* otherInt);
+  llvm::Value* toBool(llvm::Value* otherInt);
   void checkInFunction() const;
   void checkNotInFunction() const;
   void throwError(const std::string& error) const;
